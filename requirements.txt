@@ -1,0 +1,8 @@
+aiosqlite
+fastapi
+langchain-core
+langchain-openai
+langgraph
+python-dotenv
+python-telegram-bot
+uvicorn
