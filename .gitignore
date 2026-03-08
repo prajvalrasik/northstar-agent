@@ -28,3 +28,6 @@ build/
 # Temporary files
 *.tmp
 .cache/
+
+# Local planning
+planning.local.md
