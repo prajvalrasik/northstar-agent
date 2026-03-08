@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -10,19 +11,26 @@ from langgraph.prebuilt import ToolNode
 
 from .policy import (
     ApprovalStore,
-    classify_command,
+    PendingApprovalStore,
     command_signature,
     delete_signature,
+    inspect_command,
 )
 
 
 class ToolRuntime:
     """Owns pending approvals, workspace sandboxing, and command execution."""
 
-    def __init__(self, workspace_dir: Path, approvals_file: Path):
+    def __init__(
+        self,
+        workspace_dir: Path,
+        approvals_file: Path,
+        pending_approvals_file: Path,
+    ):
         self.workspace_dir = workspace_dir
         self.approval_store = ApprovalStore(approvals_file)
-        self.pending_approvals: dict[str, dict[str, str]] = {}
+        self.pending_store = PendingApprovalStore(pending_approvals_file)
+        self.pending_approvals: dict[str, dict[str, str]] = self.pending_store.load()
         self._current_thread_id = ""
 
     def set_current_thread_id(self, thread_id: str) -> None:
@@ -45,32 +53,32 @@ class ToolRuntime:
 
     def queue_pending(self, thread_id: str, pending: dict[str, str]) -> None:
         self.pending_approvals[thread_id] = pending
+        self.pending_store.set(thread_id, pending)
 
     def resolve_pending(self, thread_id: str, decision: str) -> str:
         pending = self.pending_approvals.get(thread_id)
         if not pending:
             return "No pending approval for this user."
 
-        approved = decision.strip().upper() == "YES"
+        normalized = decision.strip().upper()
+        if normalized not in {"YES", "NO"}:
+            return "Decision must be YES or NO."
+
+        approved = normalized == "YES"
         signature = pending["signature"]
 
         if not approved:
             self.approval_store.remember(signature, approved=False)
             del self.pending_approvals[thread_id]
+            self.pending_store.remove(thread_id)
             return f"Denied: {pending['display']}"
 
         self.approval_store.remember(signature, approved=True)
         del self.pending_approvals[thread_id]
+        self.pending_store.remove(thread_id)
 
         if pending["kind"] == "command":
-            result = subprocess.run(
-                pending["target"],
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=30,
-                cwd=str(self.workspace_dir),
-            )
+            result = _run_local_command(pending["target"], self.workspace_dir)
             output = (result.stdout + result.stderr).strip()
             return output or "(no output)"
 
@@ -80,6 +88,28 @@ class ToolRuntime:
 
         path.unlink()
         return f"Deleted '{pending['target']}' from the workspace."
+
+
+def _run_local_command(command: str, workspace_dir: Path) -> subprocess.CompletedProcess[str]:
+    """Run commands through PowerShell on Windows and the shell elsewhere."""
+
+    if os.name == "nt":
+        return subprocess.run(
+            ["powershell", "-NoProfile", "-Command", command],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(workspace_dir),
+        )
+
+    return subprocess.run(
+        command,
+        shell=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        cwd=str(workspace_dir),
+    )
 
 
 def build_workspace_tools(runtime: ToolRuntime):
@@ -141,6 +171,8 @@ def build_workspace_tools(runtime: ToolRuntime):
                 "target": path,
                 "signature": signature,
                 "display": f"delete {path}",
+                "reason": "Deleting workspace files requires explicit approval.",
+                "status": "pending",
             },
         )
         return (
@@ -154,31 +186,31 @@ def build_workspace_tools(runtime: ToolRuntime):
 
         thread_id = runtime.get_current_thread_id()
         command = command.strip()
-        safety = classify_command(command, runtime.approval_store)
+        command_info = inspect_command(command, runtime.approval_store)
+        safety = command_info["status"]
 
         if safety in {"safe", "approved"}:
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=30,
-                cwd=str(runtime.workspace_dir),
-            )
+            result = _run_local_command(command, runtime.workspace_dir)
             output = (result.stdout + result.stderr).strip()
             return output or "(no output)"
+
+        if safety == "blocked":
+            return f"Blocked: {command_info['reason']}"
 
         runtime.queue_pending(
             thread_id,
             {
                 "kind": "command",
                 "target": command,
-                "signature": command_signature(command),
+                "signature": command_info["signature"],
                 "display": command,
+                "reason": command_info["reason"],
+                "status": "pending",
             },
         )
         return (
             f"Approval required before running this command:\n{command}\n\n"
+            f"Reason: {command_info['reason']}\n\n"
             "Reply YES to allow it or NO to deny it."
         )
 

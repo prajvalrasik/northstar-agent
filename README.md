@@ -179,6 +179,7 @@ If your Telegram account has a username, using the same value as `user_id` in HT
 
 - `storage/sessions.db`: session checkpoints and summaries
 - `storage/exec-approvals.json`: remembered approval decisions
+- `storage/pending-approvals.json`: approvals waiting for a YES or NO
 - `storage/memory/*.md`: long-term memory notes
 - `workspace/`: sandboxed file operations root
 

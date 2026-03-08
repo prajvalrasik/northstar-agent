@@ -15,6 +15,10 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.mode, "both")
         self.assertEqual(config.model_name, "gpt-4o")
         self.assertEqual(config.storage_dir, (ROOT_DIR / "storage").resolve())
+        self.assertEqual(
+            config.pending_approvals_file,
+            (ROOT_DIR / "storage" / "pending-approvals.json").resolve(),
+        )
         self.assertEqual(config.workspace_dir, (ROOT_DIR / "workspace").resolve())
 
     def test_custom_paths_are_resolved(self):

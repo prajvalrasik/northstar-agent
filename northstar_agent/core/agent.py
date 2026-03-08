@@ -37,6 +37,7 @@ class NorthstarAgent:
         self.runtime = ToolRuntime(
             workspace_dir=config.workspace_dir,
             approvals_file=config.approvals_file,
+            pending_approvals_file=config.pending_approvals_file,
         )
         self.graph = None
         self.conn: aiosqlite.Connection | None = None

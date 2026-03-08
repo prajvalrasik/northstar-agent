@@ -13,28 +13,36 @@ SAFE_COMMANDS = {
     "date",
     "dir",
     "echo",
+    "findstr",
+    "get-childitem",
+    "get-content",
     "head",
     "ls",
     "pwd",
     "tail",
     "type",
+    "where",
     "wc",
     "whoami",
 }
 
-DANGEROUS_PATTERNS = (
-    r"\brm\b",
-    r"\bdel\b",
-    r"\bremove-item\b",
-    r"\bsudo\b",
-    r"\bchmod\b",
-    r"\bchown\b",
-    r"\bmv\b",
-    r"\bmove-item\b",
-    r"\bkill\b",
-    r"\bcurl\b",
-    r"\bwget\b",
-    r"\|.*sh\b",
+BLOCKED_PATTERNS = (
+    (r"\bsudo\b", "Privilege escalation is blocked."),
+    (r"\bcurl\b", "Network downloads are blocked."),
+    (r"\bwget\b", "Network downloads are blocked."),
+    (r"\binvoke-webrequest\b", "Network downloads are blocked."),
+    (r"\bchmod\b", "Permission changes are blocked."),
+    (r"\bchown\b", "Ownership changes are blocked."),
+    (r"\|.*(?:sh|bash|zsh|cmd|powershell)\b", "Piping directly into a shell is blocked."),
+)
+
+APPROVAL_REQUIRED_PATTERNS = (
+    (r"\brm\b", "Deleting files requires approval."),
+    (r"\bdel\b", "Deleting files requires approval."),
+    (r"\bremove-item\b", "Deleting files requires approval."),
+    (r"\bmv\b", "Moving files requires approval."),
+    (r"\bmove-item\b", "Moving files requires approval."),
+    (r"\bkill\b", "Stopping processes requires approval."),
 )
 
 
@@ -64,6 +72,33 @@ class ApprovalStore:
         self.save(approvals)
 
 
+@dataclass(slots=True)
+class PendingApprovalStore:
+    """Persistent store for approvals waiting on a YES or NO response."""
+
+    path: Path
+
+    def load(self) -> dict[str, dict[str, str]]:
+        if self.path.exists():
+            return json.loads(self.path.read_text(encoding="utf-8"))
+        return {}
+
+    def save(self, pending: dict[str, dict[str, str]]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(pending, indent=2), encoding="utf-8")
+
+    def set(self, thread_id: str, approval: dict[str, str]) -> None:
+        pending = self.load()
+        pending[thread_id] = approval
+        self.save(pending)
+
+    def remove(self, thread_id: str) -> dict[str, str] | None:
+        pending = self.load()
+        approval = pending.pop(thread_id, None)
+        self.save(pending)
+        return approval
+
+
 def command_signature(command: str) -> str:
     """Normalize command approvals under a stable signature."""
 
@@ -76,24 +111,50 @@ def delete_signature(relative_path: str) -> str:
     return f"delete::{relative_path.strip()}"
 
 
-def classify_command(command: str, store: ApprovalStore) -> str:
-    """Classify a command as safe, previously approved, or approval-gated."""
+def inspect_command(command: str, store: ApprovalStore) -> dict[str, str]:
+    """Return a detailed decision for a command."""
 
     stripped = command.strip()
+    signature = command_signature(stripped)
     if not stripped:
-        return "needs_approval"
+        return {
+            "status": "blocked",
+            "reason": "Empty commands are blocked.",
+            "signature": signature,
+        }
 
     base_command = stripped.split()[0].lower()
     if base_command in SAFE_COMMANDS:
-        return "safe"
+        return {
+            "status": "safe",
+            "reason": "Read-only command on the safe allowlist.",
+            "signature": signature,
+        }
 
-    signature = command_signature(stripped)
     if store.is_allowed(signature):
-        return "approved"
+        return {
+            "status": "approved",
+            "reason": "Previously approved command.",
+            "signature": signature,
+        }
 
     lowered = stripped.lower()
-    for pattern in DANGEROUS_PATTERNS:
+    for pattern, reason in BLOCKED_PATTERNS:
         if re.search(pattern, lowered):
-            return "needs_approval"
+            return {"status": "blocked", "reason": reason, "signature": signature}
 
-    return "needs_approval"
+    for pattern, reason in APPROVAL_REQUIRED_PATTERNS:
+        if re.search(pattern, lowered):
+            return {"status": "needs_approval", "reason": reason, "signature": signature}
+
+    return {
+        "status": "needs_approval",
+        "reason": "Command is not on the safe allowlist.",
+        "signature": signature,
+    }
+
+
+def classify_command(command: str, store: ApprovalStore) -> str:
+    """Classify a command as safe, previously approved, or approval-gated."""
+
+    return inspect_command(command, store)["status"]
