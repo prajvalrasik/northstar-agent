@@ -26,6 +26,7 @@ class AppConfig:
     memory_dir: Path
     approvals_file: Path
     pending_approvals_file: Path
+    activity_log_file: Path
     sessions_db: Path
     workspace_dir: Path
     summary_threshold: int
@@ -85,6 +86,7 @@ def load_config() -> AppConfig:
         memory_dir=storage_dir / "memory",
         approvals_file=storage_dir / "exec-approvals.json",
         pending_approvals_file=storage_dir / "pending-approvals.json",
+        activity_log_file=storage_dir / "activity.jsonl",
         sessions_db=storage_dir / "sessions.db",
         workspace_dir=workspace_dir,
         summary_threshold=int(os.getenv("NORTHSTAR_SUMMARY_THRESHOLD", "10")),

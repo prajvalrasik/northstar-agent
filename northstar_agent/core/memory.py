@@ -50,3 +50,20 @@ def search_memories(memory_dir: Path, query: str) -> str:
             matches.append(f"[{file_path.stem}]\n{content.strip()}")
 
     return "\n\n".join(matches) if matches else "No matching memories found."
+
+
+def list_memory_entries(memory_dir: Path) -> list[dict[str, str]]:
+    """Return long-term memory files as structured records."""
+
+    if not memory_dir.exists():
+        return []
+
+    records: list[dict[str, str]] = []
+    for file_path in sorted(memory_dir.glob("*.md")):
+        records.append(
+            {
+                "key": file_path.stem,
+                "content": file_path.read_text(encoding="utf-8").strip(),
+            }
+        )
+    return records

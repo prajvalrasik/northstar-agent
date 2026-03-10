@@ -8,7 +8,7 @@ import threading
 import uvicorn
 
 from northstar_agent.config import load_config
-from northstar_agent.core import NorthstarAgent
+from northstar_agent.core.agent import NorthstarAgent
 from northstar_agent.interfaces.api import create_api
 from northstar_agent.interfaces.telegram_bot import create_telegram_app
 

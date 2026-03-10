@@ -13,7 +13,9 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 
 from northstar_agent.config import AppConfig
+from northstar_agent.core.activity import ActivityLog
 from northstar_agent.core.memory import (
+    list_memory_entries,
     load_all_memories,
     save_memory_entry,
     search_memories,
@@ -34,10 +36,12 @@ class NorthstarAgent:
         self.config = config
         self.identity_prompt = self._load_prompt("identity.md")
         self.tools_prompt = self._load_prompt("tools.md")
+        self.activity_log = ActivityLog(config.activity_log_file)
         self.runtime = ToolRuntime(
             workspace_dir=config.workspace_dir,
             approvals_file=config.approvals_file,
             pending_approvals_file=config.pending_approvals_file,
+            activity_log=self.activity_log,
         )
         self.graph = None
         self.conn: aiosqlite.Connection | None = None
@@ -78,6 +82,13 @@ class NorthstarAgent:
             """Save durable project context or user preferences to long-term memory."""
 
             stored_key = save_memory_entry(self.config.memory_dir, key, content)
+            self.activity_log.append(
+                "memory_saved",
+                {
+                    "key": stored_key,
+                    "source": "tool",
+                },
+            )
             return f"Saved to long-term memory as '{stored_key}'."
 
         @tool
@@ -175,6 +186,13 @@ class NorthstarAgent:
             {"messages": [{"role": "user", "content": user_message}]},
             {"configurable": {"thread_id": thread_id}},
         )
+        self.activity_log.append(
+            "agent_turn",
+            {
+                "thread_id": thread_id,
+                "message_preview": user_message[:120],
+            },
+        )
         return response["messages"][-1].content
 
     def get_pending_approval(self, thread_id: str):
@@ -182,7 +200,22 @@ class NorthstarAgent:
 
         return self.runtime.get_pending(thread_id)
 
+    def list_pending_approvals(self):
+        """Return all pending approvals for operator inspection."""
+
+        return self.runtime.list_pending()
+
     def resolve_approval(self, thread_id: str, decision: str) -> str:
         """Approve or deny a pending action for a thread."""
 
         return self.runtime.resolve_pending(thread_id, decision)
+
+    def recent_activity(self, limit: int = 50) -> list[dict[str, object]]:
+        """Return recent runtime activity events."""
+
+        return self.activity_log.recent(limit=limit)
+
+    def list_memories(self) -> list[dict[str, str]]:
+        """Return structured long-term memory entries."""
+
+        return list_memory_entries(self.config.memory_dir)

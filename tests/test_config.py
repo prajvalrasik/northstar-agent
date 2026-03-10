@@ -19,6 +19,10 @@ class ConfigTests(unittest.TestCase):
             config.pending_approvals_file,
             (ROOT_DIR / "storage" / "pending-approvals.json").resolve(),
         )
+        self.assertEqual(
+            config.activity_log_file,
+            (ROOT_DIR / "storage" / "activity.jsonl").resolve(),
+        )
         self.assertEqual(config.workspace_dir, (ROOT_DIR / "workspace").resolve())
 
     def test_custom_paths_are_resolved(self):

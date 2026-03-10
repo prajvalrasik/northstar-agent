@@ -8,7 +8,7 @@ from telegram import Update
 from telegram.ext import Application, MessageHandler, filters
 
 from northstar_agent.config import AppConfig
-from northstar_agent.core import NorthstarAgent
+from northstar_agent.core.agent import NorthstarAgent
 from northstar_agent.core.identity import build_thread_id
 
 

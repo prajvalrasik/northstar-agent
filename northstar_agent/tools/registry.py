@@ -9,6 +9,8 @@ from pathlib import Path
 from langchain_core.tools import tool
 from langgraph.prebuilt import ToolNode
 
+from northstar_agent.core.activity import ActivityLog
+
 from .policy import (
     ApprovalStore,
     PendingApprovalStore,
@@ -26,11 +28,13 @@ class ToolRuntime:
         workspace_dir: Path,
         approvals_file: Path,
         pending_approvals_file: Path,
+        activity_log: ActivityLog,
     ):
         self.workspace_dir = workspace_dir
         self.approval_store = ApprovalStore(approvals_file)
         self.pending_store = PendingApprovalStore(pending_approvals_file)
         self.pending_approvals: dict[str, dict[str, str]] = self.pending_store.load()
+        self.activity_log = activity_log
         self._current_thread_id = ""
 
     def set_current_thread_id(self, thread_id: str) -> None:
@@ -51,9 +55,24 @@ class ToolRuntime:
         pending = self.pending_approvals.get(thread_id)
         return dict(pending) if pending else None
 
+    def list_pending(self):
+        return {
+            thread_id: dict(pending)
+            for thread_id, pending in self.pending_approvals.items()
+        }
+
     def queue_pending(self, thread_id: str, pending: dict[str, str]) -> None:
         self.pending_approvals[thread_id] = pending
         self.pending_store.set(thread_id, pending)
+        self.activity_log.append(
+            "approval_requested",
+            {
+                "thread_id": thread_id,
+                "kind": pending["kind"],
+                "display": pending["display"],
+                "reason": pending["reason"],
+            },
+        )
 
     def resolve_pending(self, thread_id: str, decision: str) -> str:
         pending = self.pending_approvals.get(thread_id)
@@ -71,15 +90,39 @@ class ToolRuntime:
             self.approval_store.remember(signature, approved=False)
             del self.pending_approvals[thread_id]
             self.pending_store.remove(thread_id)
+            self.activity_log.append(
+                "approval_denied",
+                {
+                    "thread_id": thread_id,
+                    "kind": pending["kind"],
+                    "display": pending["display"],
+                },
+            )
             return f"Denied: {pending['display']}"
 
         self.approval_store.remember(signature, approved=True)
         del self.pending_approvals[thread_id]
         self.pending_store.remove(thread_id)
+        self.activity_log.append(
+            "approval_granted",
+            {
+                "thread_id": thread_id,
+                "kind": pending["kind"],
+                "display": pending["display"],
+            },
+        )
 
         if pending["kind"] == "command":
             result = _run_local_command(pending["target"], self.workspace_dir)
             output = (result.stdout + result.stderr).strip()
+            self.activity_log.append(
+                "command_executed",
+                {
+                    "thread_id": thread_id,
+                    "command": pending["target"],
+                    "source": "approved",
+                },
+            )
             return output or "(no output)"
 
         path = self._resolve_workspace_path(pending["target"])
@@ -87,6 +130,14 @@ class ToolRuntime:
             return f"File '{pending['target']}' not found."
 
         path.unlink()
+        self.activity_log.append(
+            "file_deleted",
+            {
+                "thread_id": thread_id,
+                "path": pending["target"],
+                "source": "approved",
+            },
+        )
         return f"Deleted '{pending['target']}' from the workspace."
 
 
@@ -192,9 +243,25 @@ def build_workspace_tools(runtime: ToolRuntime):
         if safety in {"safe", "approved"}:
             result = _run_local_command(command, runtime.workspace_dir)
             output = (result.stdout + result.stderr).strip()
+            runtime.activity_log.append(
+                "command_executed",
+                {
+                    "thread_id": thread_id,
+                    "command": command,
+                    "source": safety,
+                },
+            )
             return output or "(no output)"
 
         if safety == "blocked":
+            runtime.activity_log.append(
+                "command_blocked",
+                {
+                    "thread_id": thread_id,
+                    "command": command,
+                    "reason": command_info["reason"],
+                },
+            )
             return f"Blocked: {command_info['reason']}"
 
         runtime.queue_pending(

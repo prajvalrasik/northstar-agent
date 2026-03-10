@@ -5,8 +5,8 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from northstar_agent.core import NorthstarAgent
 from northstar_agent.core.identity import build_thread_id
+from northstar_agent.core.agent import NorthstarAgent
 
 
 class ChatRequest(BaseModel):
@@ -39,6 +39,18 @@ def create_api(agent: NorthstarAgent) -> FastAPI:
     @api.get("/health")
     async def health():
         return {"status": "ok", "service": "northstar-agent"}
+
+    @api.get("/activity")
+    async def activity(limit: int = 50):
+        return {"events": agent.recent_activity(limit=limit)}
+
+    @api.get("/memories")
+    async def memories():
+        return {"memories": agent.list_memories()}
+
+    @api.get("/pending")
+    async def pending_all():
+        return {"pending_approvals": agent.list_pending_approvals()}
 
     @api.post("/chat")
     async def chat(req: ChatRequest):

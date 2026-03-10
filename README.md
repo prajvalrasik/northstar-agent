@@ -98,6 +98,24 @@ Inspect pending approvals:
 curl http://localhost:8080/pending/atlas
 ```
 
+Inspect all pending approvals:
+
+```bash
+curl http://localhost:8080/pending
+```
+
+Inspect recent activity:
+
+```bash
+curl "http://localhost:8080/activity?limit=10"
+```
+
+Inspect saved memories:
+
+```bash
+curl http://localhost:8080/memories
+```
+
 ## Example workflows
 
 ### 1. Inspect a workspace
@@ -180,6 +198,7 @@ If your Telegram account has a username, using the same value as `user_id` in HT
 - `storage/sessions.db`: session checkpoints and summaries
 - `storage/exec-approvals.json`: remembered approval decisions
 - `storage/pending-approvals.json`: approvals waiting for a YES or NO
+- `storage/activity.jsonl`: append-only runtime activity log
 - `storage/memory/*.md`: long-term memory notes
 - `workspace/`: sandboxed file operations root
 
