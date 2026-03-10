@@ -32,6 +32,12 @@ The main product surface is the local HTTP API.
 
 Telegram is supported for the same runtime, but HTTP is the fastest way to understand and demo the project.
 
+You can also open the built-in local dashboard in a browser once the app is running:
+
+```text
+http://localhost:8080/
+```
+
 ## Quickstart
 
 ### Requirements
@@ -76,6 +82,12 @@ Health check:
 curl http://localhost:8080/health
 ```
 
+Open the local control panel:
+
+```text
+http://localhost:8080/
+```
+
 Chat with the agent:
 
 ```bash
@@ -115,6 +127,12 @@ Inspect saved memories:
 ```bash
 curl http://localhost:8080/memories
 ```
+
+The local dashboard uses these same endpoints and gives you:
+- a chat panel for the shared runtime
+- a live list of pending approvals
+- recent activity events from `storage/activity.jsonl`
+- saved memory entries from `storage/memory/`
 
 ## Example workflows
 

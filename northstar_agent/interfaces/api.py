@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from northstar_agent.core.identity import build_thread_id
 from northstar_agent.core.agent import NorthstarAgent
+from northstar_agent.interfaces.dashboard import render_dashboard_html
 
 
 class ChatRequest(BaseModel):
@@ -39,6 +41,14 @@ def create_api(agent: NorthstarAgent) -> FastAPI:
     @api.get("/health")
     async def health():
         return {"status": "ok", "service": "northstar-agent"}
+
+    @api.get("/", response_class=HTMLResponse)
+    async def dashboard():
+        return render_dashboard_html()
+
+    @api.get("/dashboard", response_class=HTMLResponse)
+    async def dashboard_alias():
+        return render_dashboard_html()
 
     @api.get("/activity")
     async def activity(limit: int = 50):
