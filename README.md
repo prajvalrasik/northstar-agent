@@ -4,6 +4,8 @@ A local AI agent that reads your workspace, remembers context across sessions, a
 
 Most agent tools either just chat or run autonomously without asking. Northstar sits in the middle: it can browse files, remember project notes, and execute shell commands, but risky actions always pause for a YES/NO before anything happens. Everything runs on your machine. No cloud storage, no subscriptions.
 
+![Northstar Agent dashboard](./NorthStar%20Snapshot.png)
+
 ---
 
 ## What it does
