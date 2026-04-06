@@ -281,10 +281,33 @@ def build_workspace_tools(runtime: ToolRuntime):
             "Reply YES to allow it or NO to deny it."
         )
 
+    @tool
+    def search_workspace(query: str) -> str:
+        """Search for text across all files in the workspace. Returns matching lines with file paths."""
+
+        query_lower = query.lower()
+        results = []
+        for path in sorted(runtime.workspace_dir.rglob("*")):
+            if not path.is_file():
+                continue
+            try:
+                text = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                if query_lower in line.lower():
+                    relative = path.relative_to(runtime.workspace_dir)
+                    results.append(f"{relative}:{lineno}: {line.rstrip()}")
+
+        if not results:
+            return f"No matches found for '{query}' in the workspace."
+        return "\n".join(results[:200])
+
     return [
         list_workspace_files,
         read_workspace_file,
         write_workspace_file,
         delete_workspace_file,
+        search_workspace,
         run_command,
     ]

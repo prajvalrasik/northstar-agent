@@ -8,6 +8,7 @@ from pathlib import Path
 import aiosqlite
 from langchain_core.messages import HumanMessage, RemoveMessage
 from langchain_core.tools import tool
+from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, MessagesState, StateGraph
@@ -45,7 +46,7 @@ class NorthstarAgent:
         )
         self.graph = None
         self.conn: aiosqlite.Connection | None = None
-        self.llm: ChatOpenAI | None = None
+        self.llm: ChatOpenAI | ChatAnthropic | None = None
         self.llm_with_tools = None
         self._setup_lock = asyncio.Lock()
 
@@ -111,11 +112,18 @@ class NorthstarAgent:
             checkpointer = AsyncSqliteSaver(self.conn)
 
             all_tools = self._build_tools()
-            self.llm = ChatOpenAI(
-                model=self.config.model_name,
-                max_tokens=1024,
-                api_key=self.config.openai_api_key,
-            )
+            if self.config.provider == "anthropic":
+                self.llm = ChatAnthropic(
+                    model=self.config.model_name,
+                    max_tokens=1024,
+                    api_key=self.config.anthropic_api_key,
+                )
+            else:
+                self.llm = ChatOpenAI(
+                    model=self.config.model_name,
+                    max_tokens=1024,
+                    api_key=self.config.openai_api_key,
+                )
             self.llm_with_tools = self.llm.bind_tools(all_tools)
 
             builder = StateGraph(AgentState)

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 from northstar_agent.core.identity import build_thread_id
@@ -44,15 +47,55 @@ def create_api(agent: NorthstarAgent) -> FastAPI:
 
     @api.get("/", response_class=HTMLResponse)
     async def dashboard():
-        return render_dashboard_html()
+        return HTMLResponse(
+            render_dashboard_html(),
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
 
     @api.get("/dashboard", response_class=HTMLResponse)
     async def dashboard_alias():
-        return render_dashboard_html()
+        return HTMLResponse(
+            render_dashboard_html(),
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
 
     @api.get("/activity")
     async def activity(limit: int = 50):
         return {"events": agent.recent_activity(limit=limit)}
+
+    @api.get("/events")
+    async def events():
+        """Server-Sent Events stream — pushes a ping every 2s and an activity snapshot on each new event."""
+
+        async def generate():
+            last_fingerprint = ""
+            while True:
+                current = agent.recent_activity(limit=50)
+                fingerprint = json.dumps(current[-1], sort_keys=True) if current else ""
+                if fingerprint != last_fingerprint:
+                    last_fingerprint = fingerprint
+                    payload = json.dumps({"events": current})
+                    yield f"data: {payload}\n\n"
+                else:
+                    yield ": ping\n\n"
+                await asyncio.sleep(2)
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @api.get("/memories")
     async def memories():

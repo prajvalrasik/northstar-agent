@@ -2,7 +2,9 @@ aiosqlite
 fastapi
 langchain-core
 langchain-openai
+langchain-anthropic
 langgraph
 python-dotenv
 python-telegram-bot
 uvicorn
+langgraph-checkpoint-sqlite

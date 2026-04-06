@@ -17,6 +17,8 @@ class AppConfig:
     """Runtime configuration loaded from environment variables."""
 
     openai_api_key: str
+    anthropic_api_key: str
+    provider: str
     telegram_bot_token: str
     mode: str
     model_name: str
@@ -45,8 +47,12 @@ class AppConfig:
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
 
     def validate_for_runtime(self) -> None:
-        if not self.openai_api_key:
-            raise ValueError("OPENAI_API_KEY is required.")
+        if self.provider not in {"openai", "anthropic"}:
+            raise ValueError("NORTHSTAR_PROVIDER must be one of: openai, anthropic.")
+        if self.provider == "openai" and not self.openai_api_key:
+            raise ValueError("OPENAI_API_KEY is required when NORTHSTAR_PROVIDER=openai.")
+        if self.provider == "anthropic" and not self.anthropic_api_key:
+            raise ValueError("ANTHROPIC_API_KEY is required when NORTHSTAR_PROVIDER=anthropic.")
         if self.enable_telegram and not self.telegram_bot_token:
             raise ValueError(
                 "TELEGRAM_BOT_TOKEN is required when NORTHSTAR_MODE enables Telegram."
@@ -75,11 +81,16 @@ def load_config() -> AppConfig:
     storage_dir = _resolve_path(os.getenv("NORTHSTAR_STORAGE_DIR"), "storage")
     workspace_dir = _resolve_path(os.getenv("NORTHSTAR_WORKSPACE_DIR"), "workspace")
 
+    provider = os.getenv("NORTHSTAR_PROVIDER", "openai").strip().lower() or "openai"
+    default_model = "claude-sonnet-4-5" if provider == "anthropic" else "gpt-4o"
+
     return AppConfig(
         openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
+        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", "").strip(),
+        provider=provider,
         telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "").strip(),
         mode=os.getenv("NORTHSTAR_MODE", "both").strip().lower() or "both",
-        model_name=os.getenv("NORTHSTAR_MODEL", "gpt-4o").strip() or "gpt-4o",
+        model_name=os.getenv("NORTHSTAR_MODEL", default_model).strip() or default_model,
         host=os.getenv("NORTHSTAR_HOST", "0.0.0.0").strip() or "0.0.0.0",
         port=int(os.getenv("NORTHSTAR_PORT", "8080")),
         storage_dir=storage_dir,

@@ -1,230 +1,169 @@
 # Northstar Agent
 
-Northstar Agent is a self-hosted workspace agent for developers. It remembers context across sessions, works through a simple local API, and takes local actions only inside a configured workspace with explicit approval for risky operations.
+A local AI agent that reads your workspace, remembers context across sessions, and runs commands... but only with your approval.
 
-## Why this exists
+Most agent tools either just chat or run autonomously without asking. Northstar sits in the middle: it can browse files, remember project notes, and execute shell commands, but risky actions always pause for a YES/NO before anything happens. Everything runs on your machine. No cloud storage, no subscriptions.
 
-Most agent demos are either vague chatbots or oversized platforms. Northstar is intentionally smaller: one runtime, one workspace, one clear safety model.
+---
 
-It is built for people who want a hackable local agent that can:
-- inspect files in a workspace
-- remember project context and user preferences
-- run local commands with approval gates
-- stay usable through a plain HTTP interface, with Telegram available as an optional second surface
+## What it does
 
-## What it does well
+- **Reads and writes files** inside a sandboxed workspace directory
+- **Searches across files** to find what you're looking for
+- **Runs shell commands** safe ones immediately, risky ones only after you approve
+- **Remembers things** across sessions, stored as plain markdown files you can edit
+- **Keeps conversation history** in SQLite so context survives restarts
+- **Local dashboard** at `localhost:8080` with chat, pending approvals, activity log, and memory browser
 
-- Session memory in SQLite so conversations survive restarts
-- Rolling summaries so long chats stay within context limits
-- Long-term memory stored as editable markdown files
-- Workspace-scoped file tools for reading, writing, and deleting files
-- Approval-gated local command execution
-- One shared runtime exposed through HTTP and Telegram
+Supported LLM providers: OpenAI and Anthropic (Claude).
 
-## Primary workflow
+---
 
-The main product surface is the local HTTP API.
+## Setup
 
-1. Start the agent
-2. Send a chat request
-3. Inspect the response
-4. Approve or deny risky actions when needed
-
-Telegram is supported for the same runtime, but HTTP is the fastest way to understand and demo the project.
-
-You can also open the built-in local dashboard in a browser once the app is running:
-
-```text
-http://localhost:8080/
-```
-
-## Quickstart
-
-### Requirements
-
-- Python 3.10+
-- OpenAI API key
-- Telegram bot token only if you want Telegram mode
-
-### Install
+**Requirements:** Python 3.10+, an OpenAI or Anthropic API key
 
 ```bash
+git clone https://github.com/prajvalrasik/northstar-agent
+cd northstar-agent
+
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# macOS / Linux
+source .venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
-### Configure
+Copy the example config and fill in your key:
 
-Create a `.env` file in the repo root or copy from `.env.example`.
-
-```env
-OPENAI_API_KEY=your_openai_api_key
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-NORTHSTAR_MODE=http
-NORTHSTAR_MODEL=gpt-4o
-NORTHSTAR_HOST=0.0.0.0
-NORTHSTAR_PORT=8080
-NORTHSTAR_STORAGE_DIR=storage
-NORTHSTAR_WORKSPACE_DIR=workspace
-NORTHSTAR_SUMMARY_THRESHOLD=10
+```bash
+cp .env.example .env
 ```
 
-### Run
+Open `.env` and set `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY` if using Claude). Change `NORTHSTAR_PROVIDER` to `anthropic` if needed. Everything else can stay as-is to start.
+
+Run it:
 
 ```bash
 python main.py
 ```
 
-### Use the HTTP API
+Open `http://localhost:8080` in your browser.
 
-Health check:
+---
+
+## Using the dashboard
+
+Once running, the dashboard gives you:
+
+- A chat panel to talk to the agent
+- A live pending approvals list — approve or deny directly from the browser
+- A recent activity feed that updates automatically
+- A memory browser showing what the agent has saved
+
+You can also use the HTTP API directly:
 
 ```bash
-curl http://localhost:8080/health
-```
-
-Open the local control panel:
-
-```text
-http://localhost:8080/
-```
-
-Chat with the agent:
-
-```bash
+# Chat
 curl -X POST http://localhost:8080/chat \
   -H "Content-Type: application/json" \
-  -d "{\"user_id\":\"atlas\",\"message\":\"list the files in my workspace\"}"
-```
+  -d '{"user_id": "atlas", "message": "list the files in my workspace"}'
 
-Approve a pending action:
-
-```bash
+# Approve a pending action
 curl -X POST http://localhost:8080/approve \
   -H "Content-Type: application/json" \
-  -d "{\"user_id\":\"atlas\",\"decision\":\"YES\"}"
-```
+  -d '{"user_id": "atlas", "decision": "YES"}'
 
-Inspect pending approvals:
-
-```bash
-curl http://localhost:8080/pending/atlas
-```
-
-Inspect all pending approvals:
-
-```bash
+# Check what's pending
 curl http://localhost:8080/pending
-```
 
-Inspect recent activity:
-
-```bash
+# Recent activity
 curl "http://localhost:8080/activity?limit=10"
-```
 
-Inspect saved memories:
-
-```bash
+# Saved memories
 curl http://localhost:8080/memories
 ```
 
-The local dashboard uses these same endpoints and gives you:
-- a chat panel for the shared runtime
-- a live list of pending approvals
-- recent activity events from `storage/activity.jsonl`
-- saved memory entries from `storage/memory/`
+---
 
-## Example workflows
+## How approvals work
 
-### 1. Inspect a workspace
+When you ask the agent to do something risky like... deleting a file, running an unknown command, it pauses and queues an approval instead of acting immediately. You see it in the dashboard and click Approve or Deny. If you approve, the decision is remembered so you won't be asked again for the same action.
 
-Ask:
+Safe commands (like `ls`, `pwd`) run immediately. Network commands, privilege escalation, and shell piping are blocked entirely regardless of approval.
 
-```text
-List the files in my workspace and tell me what looks important.
+---
+
+## Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `NORTHSTAR_PROVIDER` | `openai` | LLM provider: `openai` or `anthropic` |
+| `OPENAI_API_KEY` | — | Required if provider is `openai` |
+| `ANTHROPIC_API_KEY` | — | Required if provider is `anthropic` |
+| `NORTHSTAR_MODEL` | `gpt-4o` | Model name (e.g. `claude-sonnet-4-5`) |
+| `NORTHSTAR_MODE` | `http` | `http`, `telegram`, or `both` |
+| `TELEGRAM_BOT_TOKEN` | — | Required if mode includes `telegram` |
+| `NORTHSTAR_HOST` | `0.0.0.0` | HTTP bind address |
+| `NORTHSTAR_PORT` | `8080` | HTTP port |
+| `NORTHSTAR_WORKSPACE_DIR` | `workspace` | Directory the agent can read/write |
+| `NORTHSTAR_STORAGE_DIR` | `storage` | Where sessions, memory, and logs are stored |
+| `NORTHSTAR_SUMMARY_THRESHOLD` | `10` | Messages before rolling summary kicks in |
+
+---
+
+## Telegram
+
+Set `NORTHSTAR_MODE=telegram` or `both` and add your `TELEGRAM_BOT_TOKEN`. The same approval flow works over Telegram — reply YES or NO to approve or deny actions. If your Telegram username matches the `user_id` you use in HTTP, both interfaces share the same conversation thread.
+
+---
+
+## Storage layout
+
+```
+storage/
+  sessions.db            # conversation history (SQLite)
+  memory/                # long-term notes as markdown files
+  activity.jsonl         # append-only event log
+  exec-approvals.json    # remembered approve/deny decisions
+  pending-approvals.json # approvals waiting for a response
+workspace/               # sandboxed directory for file operations
 ```
 
-Northstar can inspect the workspace tree and read project files before answering.
+---
 
-### 2. Keep working memory between sessions
+## Running tests
 
-Ask:
-
-```text
-Remember that this repo uses SQLite for session memory and Telegram is optional.
+```bash
+python -m unittest discover -s tests
 ```
 
-Northstar can persist durable notes in markdown files under `storage/memory/`.
-
-### 3. Run local actions with approval
-
-Ask:
-
-```text
-Run a command to show me the current directory contents.
-```
-
-If the command is safe, it runs immediately. If it is risky or unknown, the agent creates a pending approval and waits for a `YES` or `NO`.
-
-## How it works
-
-```text
-HTTP request or Telegram message
-  -> shared Northstar runtime
-  -> LangGraph state machine
-  -> model call
-  -> workspace tools / memory tools / approval flow
-  -> SQLite session state + markdown long-term memory
-```
+---
 
 ## Project layout
 
-```text
+```
 main.py
 northstar_agent/
   config.py
   core/
-    agent.py
-    identity.py
-    memory.py
+    agent.py       # LangGraph state machine, LLM setup
+    memory.py      # long-term memory helpers
+    identity.py    # thread ID management
+    activity.py    # event logging
   interfaces/
-    api.py
+    api.py         # FastAPI routes + SSE
+    dashboard.py   # single-page local UI
     telegram_bot.py
+  tools/
+    registry.py    # workspace and command tools
+    policy.py      # command safety rules and approval store
   prompts/
     identity.md
     tools.md
-  tools/
-    policy.py
-    registry.py
 storage/
 workspace/
 tests/
-```
-
-`legacy/` contains archived prototype files and is not part of the active product surface.
-
-## Modes
-
-- `http`: recommended default for local development and demos
-- `telegram`: run the Telegram bot only
-- `both`: run HTTP and Telegram together on the same runtime
-
-If your Telegram account has a username, using the same value as `user_id` in HTTP lets both interfaces talk to the same thread.
-
-## Storage
-
-- `storage/sessions.db`: session checkpoints and summaries
-- `storage/exec-approvals.json`: remembered approval decisions
-- `storage/pending-approvals.json`: approvals waiting for a YES or NO
-- `storage/activity.jsonl`: append-only runtime activity log
-- `storage/memory/*.md`: long-term memory notes
-- `workspace/`: sandboxed file operations root
-
-## Verification
-
-Run the current lightweight checks:
-
-```bash
-python -m unittest discover -s tests
-python -m compileall main.py northstar_agent tests
 ```

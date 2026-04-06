@@ -13,6 +13,13 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("Saved memories", html)
         self.assertIn("fetchJson('/chat'", html)
 
+    def test_dashboard_uses_escape_helper_and_no_inline_handlers(self):
+        html = render_dashboard_html()
+
+        self.assertIn("function escapeHtml(value)", html)
+        self.assertIn("data-thread-id=", html)
+        self.assertNotIn("onclick=\"resolveApproval", html)
+
 
 if __name__ == "__main__":
     unittest.main()
